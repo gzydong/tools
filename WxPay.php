@@ -3,46 +3,38 @@
 namespace App\Helpers;
 
 /**
- * Class WxPay
- * @link https://blog.csdn.net/weixin_34233421/article/details/88770267
+ * 微信支付工具类
+ *
  * @package App\Helpers
  */
 class WxPay
 {
-    //微信支付下单接口
-    const UNIFIED_ORDER_URL = 'https://api.mch.weixin.qq.com/pay/unifiedorder';
+    private $appid = null;
+    private $secret = null;
+    private $mchid = null;
+    private $key = null;
 
-    //微信订单查询接口
-    const FIND_ORDER_URL = 'https://api.mch.weixin.qq.com/pay/orderquery';
+    private $sslcert_path = '';//证书所在绝对路径
+    private $sslkey_path = '';//证书所在绝对路径
 
-    //微信公众号appid
-    private $appid = '';
-
-    //微信公众号appsecret
-    private $secret = '';
-
-    //商家号
-    private $mchid = '';
-
-    //支付密钥
-    private $key = '';
-
-    //证书所在绝对路径
-    private $sslcert_path = '';
-
-    //证书所在绝对路径
-    private $sslkey_path = '';
-
-    public function __construct($appid = '', $secret = '', $mchid = '', $key = '')
+    /**
+     * WxPay constructor.
+     *
+     * @param string $appid 微信公众号appid
+     * @param string $secret 微信公众号 appsecret
+     * @param string $mchid 商家号
+     * @param string $key 支付密钥
+     */
+    public function __construct($appid, $secret, $mchid, $key)
     {
-        if (!empty($appid)) $this->appid = $appid;
-        if (!empty($secret)) $this->secret = $secret;
-        if (!empty($mchid)) $this->mchid = $mchid;
-        if (!empty($key)) $this->key = $key;
+        $this->appid = $appid;
+        $this->secret = $secret;
+        $this->mchid = $mchid;
+        $this->key = $key;
     }
 
     /**
-     * 微信 H5 支付，公众号支付，扫码支付
+     * 微信 H5 支付，公众号支付，扫码支付（下单接口）
      *
      * @param $params
      * @return array 返回支付时所需要的数据
@@ -50,22 +42,24 @@ class WxPay
      */
     public function unify($params)
     {
-        $data['appid'] = $this->appid;
-        $data['mch_id'] = $this->mchid;
-        $data['nonce_str'] = Wxpay::getNonceStr();
-
-        $data['body'] = '在线缴费';
-        $data['spbill_create_ip'] = $_SERVER["REMOTE_ADDR"];
-        $data['trade_type'] = "JSAPI";
-        $data['openid'] = '';
-        $data['out_trade_no'] = '';
-        $data['total_fee'] = 0;
-        $data['notify_url'] = "";
+        $data = [
+            'appid'=>$this->appid,
+            'mch_id'=>$this->mchid,
+            'nonce_str'=>self::getNonceStr(),
+            'body'=>'在线缴费',
+            'spbill_create_ip'=>$_SERVER["REMOTE_ADDR"],
+            'trade_type'=>"JSAPI",
+            'openid'=>'',
+            'out_trade_no'=>'',
+            'total_fee'=>0,
+            'notify_url'=>'',
+        ];
 
         $data = array_filter(array_merge($data, $params));
-        $data['sign'] = $sign = $this->createSign($data);
+        $data['sign'] = $this->createSign($data);
 
-        $result = $this->https_post(self::UNIFIED_ORDER_URL, $this->toXml($data));
+        $url = 'https://api.mch.weixin.qq.com/pay/unifiedorder';
+        $result = $this->https_post($url, $this->toXml($data));
         $ret = $this->xmlToArray($result);
         if ($ret['return_code'] == 'SUCCESS' && $ret['return_msg'] == 'OK') {
             if ($data['trade_type'] == 'JSAPI') {
@@ -96,13 +90,16 @@ class WxPay
      */
     public function findOrder($out_trade_no)
     {
-        $data['appid'] = $this->appid;
-        $data['mch_id'] = $this->mchid;
-        $data['nonce_str'] = Wxpay::getNonceStr();
-        $data['out_trade_no'] = $out_trade_no;
-        $data['sign'] = $sign = $this->createSign($data);
+        $data = [
+            'appid'=>$this->appid,
+            'mch_id'=>$this->mchid,
+            'nonce_str'=>self::getNonceStr(),
+            'out_trade_no'=>$out_trade_no
+        ];
 
-        $result = $this->https_post(self::FIND_ORDER_URL, $this->toXml($data));
+        $data['sign'] = $this->createSign($data);
+        $url = 'https://api.mch.weixin.qq.com/pay/orderquery';
+        $result = $this->https_post($url, $this->toXml($data));
         $ret = $this->xmlToArray($result);
         if ($ret['return_code'] == 'SUCCESS' && $ret['return_msg'] == 'OK') {
             return $ret;
@@ -112,18 +109,21 @@ class WxPay
     }
 
     /**
-    * 退款订单查询
-    * @params string $transaction_id : 微信订单号
-    * @params string $out_trade_no : 商家订单号（与微信订单号二选一）
-    * */
+     * 退款订单查询
+     *
+     * @params string $transaction_id : 微信订单号
+     * @params string $out_trade_no : 商家订单号（与微信订单号二选一）
+     * */
     public function findRefundOrder($out_trade_no)
     {
-        $data['appid'] = $this->appid;
-        $data['mch_id'] = $this->mchid;
-        $data['nonce_str'] = self::getNonceStr();
-        $data['out_trade_no'] = $out_trade_no;
-        $data['sign'] = $this->createSign($data);
+        $data = [
+            'appid'=>$this->appid,
+            'mch_id'=>$this->mchid,
+            'nonce_str'=>self::getNonceStr(),
+            'out_trade_no'=>$out_trade_no
+        ];
 
+        $data['sign'] = $this->createSign($data);
         $url = 'https://api.mch.weixin.qq.com/pay/refundquery';
         $result = $this->https_post($url, $this->toXml($data));
         $ret = $this->xmlToArray($result);
@@ -135,30 +135,35 @@ class WxPay
     }
 
     /**
-     * 申请退款
+     * 微信支付申请退款
      *
-     * @param $out_trade_no 商户订单号
-     * @param $out_refund_no 商户退款单号
-     * @param $total_fee 订单金额
-     * @param $refund_fee 退款金额
+     * @param string $out_trade_no 商户订单号
+     * @param string $out_refund_no 商户退款单号
+     * @param int $total_fee 订单金额
+     * @param int $refund_fee 退款金额
+     * @param string $notify_url 退款通知回调url
      * @param string $refund_desc 退款原因
-     * @return mixed|null
+     * @return mixed
      * @throws \Exception
      */
-    public function refund($out_trade_no, $out_refund_no, $total_fee, $refund_fee, $refund_desc = '退款')
+    public function refund($out_trade_no, $out_refund_no, $total_fee, $refund_fee,$notify_url, $refund_desc = '退款')
     {
-        $data['appid'] = $this->appid;
-        $data['mch_id'] = $this->mchid;
-        $data['nonce_str'] = self::getNonceStr();
-        $data['out_trade_no'] = $out_trade_no;
-        $data['out_refund_no'] = $out_refund_no;
-        $data['total_fee'] = $total_fee * 100;
-        $data['refund_fee'] = $refund_fee * 100;
-        $data['refund_desc'] = $refund_desc;
-        $data['notify_url'] = "";
+        $data = [
+            'appid'=>$this->appid,
+            'mch_id'=>$this->mchid,
+            'nonce_str'=>self::getNonceStr(),
+            'out_trade_no'=>$out_trade_no,
+            'out_refund_no'=>$out_refund_no,
+            'total_fee'=>$total_fee,
+            'refund_fee'=>$refund_fee,
+            'refund_desc'=>$refund_desc,
+            'notify_url'=>$notify_url,
+        ];
+
         $data['sign'] = $this->createSign($data);
 
         $url = 'https://api.mch.weixin.qq.com/secapi/pay/refund';
+
         $result = $this->https_post($url, $this->toXml($data), true);
         $ret = $this->xmlToArray($result);
         if ($ret['return_code'] == 'SUCCESS' && $ret['return_msg'] == 'OK') {
@@ -170,35 +175,37 @@ class WxPay
 
     /**
      * 企业付款至用户零钱
-     * @params string $openid : 用户openid
-     * @params int $total_fee : 付款金额，单位分
-     * @params string $out_trade_no : 商家订单号
-     * @params string $username : 微信用户名称（注意微信昵称若为空时支付会出错）
-     * @params string $desc : 付款描述
-     * @params string $check_name : 是否检测用户名
-     * */
-    public function payForUser($openid, $total_fee, $out_trade_no, $username = '魔盒CMS', $desc = '魔盒CMS付款给用户', $check_name = 'NO_CHECK')
+     *
+     * @link https://pay.weixin.qq.com/wiki/doc/api/tools/mch_pay.php?chapter=14_2
+     * @param string $openid 用户openid
+     * @param string $total_fee 付款金额，单位分
+     * @param string $out_trade_no 商家订单号
+     * @param string $username 微信用户名称（注意微信昵称若为空时支付会出错）
+     * @param string $desc 付款描述
+     * @param string $check_name 是否检测用户名（NO_CHECK：不校验真实姓名，FORCE_CHECK：强校验真实姓名）
+     * @return mixed
+     * @throws \Exception
+     */
+    public function payForUser($openid, $total_fee, $out_trade_no, $username, $desc, $check_name = 'NO_CHECK')
     {
-        $data['amount'] = $total_fee * 100;
-        $data['check_name'] = $check_name;
-        $data['desc'] = $desc;
-        $data['mch_appid'] = $this->appid;
-        $data['mchid'] = $this->mchid;
-        $data['nonce_str'] = self::getNonceStr();
-        $data['openid'] = $openid;
-        $data['partner_trade_no'] = $out_trade_no;
-        $data['re_user_name'] = $username;
-        $data['spbill_create_ip'] = $_SERVER["REMOTE_ADDR"];
-        $data['sign'] = $this->createSign($data);
+        $data = [
+            'mch_appid'=>$this->appid,
+            'mchid'=>$this->mchid,
+            'nonce_str'=>self::getNonceStr(),
+            'openid'=>$openid,
+            'partner_trade_no'=>$out_trade_no,
+            'amount'=>$total_fee,
+            'check_name'=>$check_name,
+            'desc'=>$desc,
+            're_user_name'=>$username,
+            'spbill_create_ip'=>$_SERVER["REMOTE_ADDR"]
+        ];
 
+        $data['sign'] = $this->createSign($data);
         $url = 'https://api.mch.weixin.qq.com/mmpaymkttransfers/promotion/transfers';
         $result = $this->https_post($url, $this->toXml($data), true);
         $ret = $this->xmlToArray($result);
-        if ($ret['return_code'] == 'SUCCESS' && $ret['result_code'] == 'SUCCESS') {
-            //支付成功返回商户订单号、微信订单号、微信支付成功时间
-            $result['partner_trade_no'] = $ret['partner_trade_no'];
-            $result['payment_no'] = $ret['payment_no'];
-            $result['payment_time'] = $ret['payment_time'];
+        if ($ret['return_code'] == 'SUCCESS') {
             return $ret;
         }
 
@@ -206,16 +213,17 @@ class WxPay
     }
 
     /**
-    * 普通红包
-    * @params string $out_trade_no : 商家订单号
-    * @params string $openid : 接收红包用户的openid
-    * @params int $total_fee : 红包金额，单位分
-    * @params int $total_num : 红包发放总人数
-    * @params string $wishing : 红包祝福语
-    * @params string $act_name : 活动名称
-    * @params string $remark : 备注
-    * @params string $scene_id ：场景值ID。发放红包使用场景，红包金额大于200或者小于1元时必传。PRODUCT_1:商品促销、PRODUCT_2:抽奖、PRODUCT_3:虚拟物品兑奖 、PRODUCT_4:企业内部福利、PRODUCT_5:渠道分润、PRODUCT_6:保险回馈、PRODUCT_7:彩票派奖、PRODUCT_8:税务刮奖
-    * */
+     * 普通红包
+     *
+     * @params string $out_trade_no : 商家订单号
+     * @params string $openid : 接收红包用户的openid
+     * @params int $total_fee : 红包金额，单位分
+     * @params int $total_num : 红包发放总人数
+     * @params string $wishing : 红包祝福语
+     * @params string $act_name : 活动名称
+     * @params string $remark : 备注
+     * @params string $scene_id ：场景值ID。发放红包使用场景，红包金额大于200或者小于1元时必传。PRODUCT_1:商品促销、PRODUCT_2:抽奖、PRODUCT_3:虚拟物品兑奖 、PRODUCT_4:企业内部福利、PRODUCT_5:渠道分润、PRODUCT_6:保险回馈、PRODUCT_7:彩票派奖、PRODUCT_8:税务刮奖
+     * */
     public function redPack($openid, $total_fee, $out_trade_no, $total_num = 1, $wishing = '感谢您光临***平台进行购物', $act_name = '***购物发红包', $remark = '购物领红包')
     {
         $data['mch_billno'] = $out_trade_no;
@@ -235,7 +243,7 @@ class WxPay
         $url = 'https://api.mch.weixin.qq.com/mmpaymkttransfers/sendredpack';
         $result = $this->https_post($url, $this->toXml($data), true);
         $ret = $this->xmlToArray($result);
-        if ($ret['return_code'] == 'SUCCESS' && $ret['result_code'] == 'SUCCESS') {
+        if ($ret['return_code'] == 'SUCCESS') {
             return $ret;
         }
 
@@ -243,17 +251,18 @@ class WxPay
     }
 
     /**
-    * 裂变红包：一次可以发放一组红包。首先领取的用户为种子用户，种子用户领取一组红包当中的一个，并可以通过社交分享将剩下的红包给其他用户。
+     * 裂变红包：一次可以发放一组红包。首先领取的用户为种子用户，种子用户领取一组红包当中的一个，并可以通过社交分享将剩下的红包给其他用户。
      * 裂变红包充分利用了人际传播的优势。
-    * @params string $out_trade_no : 商家订单号
-    * @params string $openid : 接收红包用户的openid
-    * @params int $total_fee : 红包金额，单位分
-    * @params int $total_num : 红包发放总人数
-    * @params string $wishing : 红包祝福语
-    * @params string $act_name : 活动名称
-    * @params string $remark : 备注
-    * @params string $scene_id ：场景值ID。发放红包使用场景，红包金额大于200或者小于1元时必传。PRODUCT_1:商品促销、PRODUCT_2:抽奖、PRODUCT_3:虚拟物品兑奖 、PRODUCT_4:企业内部福利、PRODUCT_5:渠道分润、PRODUCT_6:保险回馈、PRODUCT_7:彩票派奖、PRODUCT_8:税务刮奖
-    * */
+     *
+     * @params string $out_trade_no : 商家订单号
+     * @params string $openid : 接收红包用户的openid
+     * @params int $total_fee : 红包金额，单位分
+     * @params int $total_num : 红包发放总人数
+     * @params string $wishing : 红包祝福语
+     * @params string $act_name : 活动名称
+     * @params string $remark : 备注
+     * @params string $scene_id ：场景值ID。发放红包使用场景，红包金额大于200或者小于1元时必传。PRODUCT_1:商品促销、PRODUCT_2:抽奖、PRODUCT_3:虚拟物品兑奖 、PRODUCT_4:企业内部福利、PRODUCT_5:渠道分润、PRODUCT_6:保险回馈、PRODUCT_7:彩票派奖、PRODUCT_8:税务刮奖
+     * */
     public function redPackGroup($openid, $total_fee, $out_trade_no, $total_num, $wishing = '感谢您光临***进行购物', $act_name = '**购物发红包', $remark = '购物领红包')
     {
         $data['mch_billno'] = $out_trade_no;
@@ -274,7 +283,7 @@ class WxPay
         $url = 'https://api.mch.weixin.qq.com/mmpaymkttransfers/sendgroupredpack';
         $result = $this->https_post($url, $this->toXml($data), true);
         $ret = $this->xmlToArray($result);
-        if ($ret['return_code'] == 'SUCCESS' && $ret['result_code'] == 'SUCCESS') {
+        if ($ret['return_code'] == 'SUCCESS') {
             return $ret;
         }
 
@@ -283,6 +292,7 @@ class WxPay
 
     /**
      * 查询红包记录
+     *
      * @params string $out_trade_no : 商家订单号
      * */
     public function findRedPack($out_trade_no)
@@ -297,45 +307,36 @@ class WxPay
         $url = 'https://api.mch.weixin.qq.com/mmpaymkttransfers/gethbinfo';
         $result = $this->https_post($url, $this->toXml($data), true);
         $ret = $this->xmlToArray($result);
-        if ($ret['return_code'] == 'SUCCESS' && $ret['result_code'] == 'SUCCESS') {
+        if ($ret['return_code'] == 'SUCCESS') {
             return $ret;
         }
 
         throw new \Exception('查询红包记录失败...');
     }
 
+
     /**
-     * 获取用户微信的OPENID
+     * 对参数排序，生成MD5加密签名
      *
-     * @param bool $c
-     * @return mixed
+     * @param $data
+     * @return string
      */
-    public function openid($c = false)
+    private function createSign($data)
     {
-        if ($_GET['state'] != "zgm") {
-            $t = $c ? "snsapi_userinfo" : "snsapi_base";
-            $url = urlencode(get_url());
-            $url = "https://open.weixin.qq.com/connect/oauth2/authorize?appid=" . $this->appid . "&redirect_uri=" . $url . "&response_type=code&scope=" . $t . "&state=zgm#wechat_redirect";
-            echo "<html><script>window.location.href='$url';</script></html>";
-            exit;
+        $str = '';
+        ksort($data);
+        foreach ($data as $k => $v) {
+            if ($k != 'sign') $str .= $k . '=' . $v . '&';
         }
-        if ($_GET['code']) {
-            $url = "https://api.weixin.qq.com/sns/oauth2/access_token?appid=" . $this->appid . "&secret=" . $this->secret . "&code=" . $_GET['code'] . "&grant_type=authorization_code";
-            $wx_db = json_decode($this->https_get($url));
-            if ($c) {
-                $url_2 = "https://api.weixin.qq.com/sns/userinfo?access_token=" . $wx_db->access_token . "&openid=" . $wx_db->openid . "&lang=zh_CN";
-                $db = json_decode($this->https_get($url_2));
-                return $db;
-            } else {
-                return $wx_db->openid;
-            }
-        }
+
+        $temp = $str . "key={$this->key}";
+        return strtoupper(md5($temp));
     }
 
     /**
      * 发起网络GET请求
      *
-     * @param $url URL链接
+     * @param $url
      * @return mixed|string
      */
     private function https_get($url)
@@ -356,20 +357,14 @@ class WxPay
         return $result;
     }
 
-    //对参数排序，生成MD5加密签名
-    private function createSign($data)
-    {
-        $str = '';
-        ksort($data);
-        foreach ($data as $k => $v) {
-            if ($k != 'sign') $str .= $k . '=' . $v . '&';
-        }
-
-        $temp = $str . "key={$this->key}";
-        return strtoupper(md5($temp));
-    }
-
-    //POST提交数据
+    /**
+     * POST请求数据
+     *
+     * @param $url
+     * @param $data
+     * @param bool $ssl
+     * @return mixed|string
+     */
     private function https_post($url, $data, $ssl = false)
     {
         $ch = curl_init();
@@ -432,10 +427,10 @@ class WxPay
     }
 
     /**
-     *
      * 产生随机字符串，不长于32位
+     *
      * @param int $length
-     * @return 产生的随机字符串
+     * @return string
      */
     public static function getNonceStr($length = 32)
     {
